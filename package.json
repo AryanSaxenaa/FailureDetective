@@ -1,0 +1,25 @@
+{
+  "name": "notion-failure-detective",
+  "version": "1.0.0",
+  "description": "Investigate what breaks in production APIs from a plain-English Notion spec.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js server",
+    "server": "node index.js server",
+    "init": "node index.js init",
+    "run": "node index.js run",
+    "notion-login": "node index.js notion-login",
+    "demo-api": "node src/demoApi.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.1",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "mcp-remote": "^0.1.18",
+    "uuid": "^11.1.0"
+  }
+}
