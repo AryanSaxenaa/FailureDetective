@@ -4,6 +4,8 @@ It passed CI. It still breaks in production before your users do.
 
 Notion Failure Detective turns a plain English Notion page into a live investigation. It runs the test, finds where your system breaks, and writes back exactly why.
 
+You edit one line in Notion. The system reruns the investigation and shows a different failure boundary.
+
 ## Positioning
 
 This is a production failure investigation tool, not a dashboard.
@@ -24,20 +26,23 @@ Remove Notion and the interaction model collapses.
 Example Notion report output for the demo bottleneck scenario:
 
 ```text
-❌ FAILED THRESHOLD — Checkout flow breached latency target
+❌ FAILED — Checkout collapses at 52 users (1240ms p95)
 
 P95 Latency: 1240ms (threshold 300ms)
 Error Rate: 8.2% (threshold 3.0%)
 
 Root Cause:
-Latency increases through the ramp and breaches the threshold under sustained load,
-consistent with a hard checkout bottleneck.
+P95 latency rises from 180ms at 40 users to 1240ms at 200 users,
+breaching the 300ms threshold by over 4x. Error rate reaches 8.2%.
+This pattern is consistent with a hard checkout bottleneck.
 
 Fix:
-Increase the checkout service's effective concurrency limit and reduce waiting at the bottleneck.
+Increase checkout concurrency capacity or remove the blocking dependency causing queue buildup.
 ```
 
-A run can succeed even if your API fails. That means the tool worked and found a real issue.
+The investigation succeeded. Your API did not.
+
+That means the system worked and found a real production failure.
 
 ## Product Loop
 
@@ -55,9 +60,9 @@ They test at 10 users.
 They ship.  
 It breaks at 200.
 
-Not because they could not test it, but because investigation requires scripting, execution, and interpretation across different tools.
+Not because they couldn't test it, but because investigation is fragmented across tools.
 
-This collapses all of that into one Notion page.
+This collapses it into one place: Notion.
 
 ## Human-In-The-Loop
 
@@ -84,9 +89,9 @@ The demo API intentionally simulates a checkout bottleneck so the report has som
 ## Stack
 
 - Node.js + Express
-- Notion MCP for the read/write core loop
-- k6 via Docker for investigation execution
-- Groq for structured extraction, diagnosis, and fallback code generation
+- Notion MCP (core interface)
+- k6 via Docker (execution)
+- Groq (extraction + diagnosis)
 
 ## Setup
 
