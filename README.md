@@ -1,10 +1,12 @@
 # Notion Failure Detective
 
-It passed CI. It still breaks in production before your users tell you. Notion Failure Detective lets a developer describe an investigation in plain English inside Notion, runs the investigation, and writes the diagnosis back into Notion through MCP.
+It passed CI. It still breaks in production before your users do.
+
+Notion Failure Detective turns a plain English Notion page into a live investigation. It runs the test, finds where your system breaks, and writes back exactly why.
 
 ## Positioning
 
-This is not presented as a load-testing dashboard. It is a production failure investigation tool.
+This is a production failure investigation tool, not a dashboard.
 
 Core story:
 
@@ -13,39 +15,55 @@ Core story:
 Notion MCP is the structural core:
 - the investigation spec is read from Notion through MCP
 - execution state is written back to Notion through MCP
-- the final diagnosis and report are written back to Notion through MCP
+- the final diagnosis is written back to Notion through MCP
 
 Remove Notion and the interaction model collapses.
+
+## Example Output
+
+Example Notion report output for the demo bottleneck scenario:
+
+```text
+❌ FAILED THRESHOLD — Checkout flow breached latency target
+
+P95 Latency: 1240ms (threshold 300ms)
+Error Rate: 8.2% (threshold 3.0%)
+
+Root Cause:
+Latency increases through the ramp and breaches the threshold under sustained load,
+consistent with a hard checkout bottleneck.
+
+Fix:
+Increase the checkout service's effective concurrency limit and reduce waiting at the bottleneck.
+```
+
+A run can succeed even if your API fails. That means the tool worked and found a real issue.
 
 ## Product Loop
 
 1. A developer writes what to investigate in a Notion page.
-2. The system extracts target, flow, load profile, and thresholds.
-3. It generates a k6 investigation script and validates it.
+2. The system extracts the target, flow, load profile, and thresholds.
+3. It generates and validates a k6 investigation script.
 4. It runs the investigation in Docker.
 5. It writes the measured results and diagnosis back into Notion.
 
-## What The Verdict Means
-
-Two statuses matter:
-
-- `Project status`: whether the investigation pipeline itself succeeded.
-- `API verdict`: whether the target API passed or failed the requested thresholds.
-
-Example:
-- `Project status: RUN_SUCCEEDED`
-- `API verdict: FAILED`
-
-That means the product worked correctly end to end, and it found that the API breached its SLO. It does not mean the project is broken.
-
 ## Why This Exists
 
-Production APIs fail because investigation usually requires three separate skills and tools:
-- writing a test
-- running it
-- interpreting the result
+Most teams never run real investigations before production.
 
-This product collapses all three into one Notion workflow.
+They test at 10 users.  
+They ship.  
+It breaks at 200.
+
+Not because they could not test it, but because investigation requires scripting, execution, and interpretation across different tools.
+
+This collapses all of that into one Notion page.
+
+## Human-In-The-Loop
+
+The developer defines the investigation in Notion. The system runs it and writes back the diagnosis. The developer edits one line and reruns.
+
+No code changes. No config files. Just iteration inside Notion.
 
 ## Demo Story
 
@@ -58,20 +76,17 @@ Primary demo scenario:
 
 Expected story:
 - the run succeeds
-- the API may fail the threshold
+- the API may fail the requested threshold
 - the Notion report explains what happened and what to fix
 
 The demo API intentionally simulates a checkout bottleneck so the report has something real to diagnose.
 
 ## Stack
 
-- Node.js 20
-- Express
-- `@modelcontextprotocol/sdk`
-- `mcp-remote`
-- Groq via direct `fetch`
-- k6 via `grafana/k6:latest`
-- local run artifacts under `runs/{run_id}/`
+- Node.js + Express
+- Notion MCP for the read/write core loop
+- k6 via Docker for investigation execution
+- Groq for structured extraction, diagnosis, and fallback code generation
 
 ## Setup
 
@@ -124,7 +139,7 @@ The Express server exposes:
 - `GET /api/run/:run_id/status`
 - `GET /api/run/:run_id/result`
 
-`GET /api/run/:run_id/result` returns both execution outcome and API outcome:
+`GET /api/run/:run_id/result` returns:
 
 - `project_status`
 - `api_verdict`
@@ -138,12 +153,12 @@ Each investigation writes:
 
 - a database row in `API Failure Reports`
 - a report sub-page with the metrics table first
-- headline, primary finding, fix recommendation, and confidence
+- a headline, primary finding, fix recommendation, and confidence statement
 
-The report copy is intentionally phrased for presentation:
-- first show the numbers
-- then say what happened
-- then say what to fix before users find it
+The report wording is designed to be presentation-friendly:
+- show the numbers first
+- say what happened
+- say what to fix before your users do
 
 ## Local Artifacts
 
@@ -164,15 +179,13 @@ Run the local demo API:
 npm run demo-api
 ```
 
-The checkout endpoint simulates a connection-pool ceiling. To create the pass-case demo:
+The checkout endpoint simulates a bottleneck. To create the pass-case demo:
 
 ```bash
 curl -X POST http://localhost:3001/admin/pool/500
 ```
 
 ## Presentation Notes
-
-If you are presenting this project, keep the framing tight:
 
 1. Start with the Notion page, not the terminal.
 2. Say this is a production failure investigation tool, not a load-testing UI.
