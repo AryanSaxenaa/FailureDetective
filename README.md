@@ -1,106 +1,93 @@
 # Notion Failure Detective
 
-It passed CI. It still breaks in production before your users do.
+Notion Failure Detective is a Node.js application that reads an investigation spec from Notion through Notion MCP, runs a k6-based API investigation in Docker, and writes the results and diagnosis back to Notion.
 
-Notion Failure Detective turns a plain English Notion page into a live investigation. It runs the test, finds where your system breaks, and writes back exactly why.
+The product focus is production failure investigation, not a standalone load-testing dashboard. Notion is the primary interface for defining what to investigate and for reading the final report.
 
-You edit one line in Notion. The system reruns the investigation and shows a different failure boundary.
+## Overview
 
-## Positioning
+The system supports this end-to-end workflow:
 
-This is a production failure investigation tool, not a dashboard.
+1. Read a plain-English test spec from a Notion page.
+2. Extract the target URL, endpoints, load profile, and thresholds.
+3. Generate and validate a k6 script.
+4. Execute the script in Docker.
+5. Parse summary metrics from k6 output.
+6. Generate a diagnosis with Groq, with deterministic fallbacks.
+7. Write the structured result and a report page back to Notion.
 
-Core story:
+## Current Implementation
 
-> Your API passed CI. It still breaks in production. Notion finds it first.
+- Runtime: Node.js + Express
+- Notion integration: Notion MCP via `@modelcontextprotocol/sdk` and `mcp-remote`
+- Investigation execution: k6 in Docker
+- LLM provider: Groq
+- Local artifacts: written under `runs/{run_id}/`
 
-Notion MCP is the structural core:
-- the investigation spec is read from Notion through MCP
-- execution state is written back to Notion through MCP
-- the final diagnosis is written back to Notion through MCP
+## Architecture
 
-Remove Notion and the interaction model collapses.
+Main entry points:
 
-## Example Output
+- `node index.js notion-login`
+- `node index.js init`
+- `node index.js run`
+- `node index.js server`
 
-Example Notion report output for the demo bottleneck scenario:
+Main modules:
 
-```text
-❌ FAILED — Checkout collapses at 52 users (1240ms p95)
+- [index.js](/C:/Users/91730/Documents/Notion%20MCP/index.js)
+  CLI entry point for login, init, run, and server modes.
+- [src/notionClient.js](/C:/Users/91730/Documents/Notion%20MCP/src/notionClient.js)
+  MCP client wrapper for reading Notion pages, creating the database, updating rows, and creating report pages.
+- [src/orchestrator.js](/C:/Users/91730/Documents/Notion%20MCP/src/orchestrator.js)
+  Sequential investigation pipeline.
+- [src/llm.js](/C:/Users/91730/Documents/Notion%20MCP/src/llm.js)
+  Spec extraction, diagnosis generation, deterministic k6 fallback generation, and LLM retry/fallback behavior.
+- [src/k6Runner.js](/C:/Users/91730/Documents/Notion%20MCP/src/k6Runner.js)
+  Docker-based k6 execution and script validation.
+- [src/metricsParser.js](/C:/Users/91730/Documents/Notion%20MCP/src/metricsParser.js)
+  Extracts p50/p95/p99, error rate, RPS, VUs, and request counts from k6 summary output.
+- [src/server.js](/C:/Users/91730/Documents/Notion%20MCP/src/server.js)
+  Express API for starting runs and polling status/results.
 
-P95 Latency: 1240ms (threshold 300ms)
-Error Rate: 8.2% (threshold 3.0%)
+## Notion Model
 
-Root Cause:
-P95 latency rises from 180ms at 40 users to 1240ms at 200 users,
-breaching the 300ms threshold by over 4x. Error rate reaches 8.2%.
-This pattern is consistent with a hard checkout bottleneck.
+The project creates and uses:
 
-Fix:
-Increase checkout concurrency capacity or remove the blocking dependency causing queue buildup.
-```
+- a Notion database named `API Failure Reports`
+- a template spec page named `Test Spec`
+- a report sub-page for each investigation run
 
-The investigation succeeded. Your API did not.
+The Notion report includes:
 
-That means the system worked and found a real production failure.
+- a metrics table
+- a verdict
+- a headline
+- a primary finding
+- a fix recommendation
+- a confidence statement
 
-## Product Loop
+## Result Semantics
 
-1. A developer writes what to investigate in a Notion page.
-2. The system extracts the target, flow, load profile, and thresholds.
-3. It generates and validates a k6 investigation script.
-4. It runs the investigation in Docker.
-5. It writes the measured results and diagnosis back into Notion.
+Two outcomes are tracked:
 
-## Why This Exists
+- `project_status`
+  Whether the investigation pipeline itself completed successfully.
+- `api_verdict`
+  Whether the target API passed or failed the requested thresholds.
 
-Most teams never run real investigations before production.
-
-They test at 10 users.  
-They ship.  
-It breaks at 200.
-
-Not because they couldn't test it, but because investigation is fragmented across tools.
-
-This collapses it into one place: Notion.
-
-## Human-In-The-Loop
-
-The developer defines the investigation in Notion. The system runs it and writes back the diagnosis. The developer edits one line and reruns.
-
-No code changes. No config files. Just iteration inside Notion.
-
-## Demo Story
-
-Primary demo scenario:
-
-- Target: `http://localhost:3001`
-- Flow: `POST /auth/login`, `GET /cart`, `POST /checkout`
-- Load: ramp to `200` users over `90` seconds, sustain for `3` minutes
-- Thresholds: p95 latency `300ms`, error rate `3%`
-
-Expected story:
-- the run succeeds
-- the API may fail the requested threshold
-- the Notion report explains what happened and what to fix
-
-The demo API intentionally simulates a checkout bottleneck so the report has something real to diagnose.
-
-## Stack
-
-- Node.js + Express
-- Notion MCP (core interface)
-- k6 via Docker (execution)
-- Groq (extraction + diagnosis)
+This means a run can succeed operationally while still reporting that the target API failed its thresholds.
 
 ## Setup
+
+Install dependencies:
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-Fill in:
+Fill in these values in `.env`:
 
 - `GROQ_API_KEY`
 - `NOTION_PARENT_PAGE_ID`
@@ -111,92 +98,166 @@ Authenticate Notion MCP:
 node index.js notion-login
 ```
 
-Initialize the workspace:
+Initialize the Notion workspace objects:
 
 ```bash
 node index.js init
 ```
 
-Run an investigation:
+`init` creates:
+
+- the `API Failure Reports` database
+- the `Test Spec` page
+- `NOTION_DATABASE_ID`
+- `NOTION_SPEC_PAGE_ID`
+
+## Running The Project
+
+Run a full investigation from the configured Notion page:
 
 ```bash
 node index.js run
 ```
 
-`init` creates:
-- the `API Failure Reports` database
-- a template `Test Spec` page
-- `NOTION_DATABASE_ID` and `NOTION_SPEC_PAGE_ID` entries in `.env`
+Start the local API server:
 
-## Commands
+```bash
+node index.js server
+```
 
-- `node index.js notion-login`
-- `node index.js init`
-- `node index.js run`
-- `node index.js server`
-- `npm run demo-api`
-
-## API
-
-The Express server exposes:
-
-- `POST /api/run`
-- `GET /api/run/:run_id/status`
-- `GET /api/run/:run_id/result`
-
-`GET /api/run/:run_id/result` returns:
-
-- `project_status`
-- `api_verdict`
-- `metrics`
-- `diagnosis`
-- `notion_report_url`
-
-## Notion Output
-
-Each investigation writes:
-
-- a database row in `API Failure Reports`
-- a report sub-page with the metrics table first
-- a headline, primary finding, fix recommendation, and confidence statement
-
-The report wording is designed to be presentation-friendly:
-- show the numbers first
-- say what happened
-- say what to fix before your users do
-
-## Local Artifacts
-
-Each run writes files under `runs/{run_id}/`:
-
-- `spec.json`
-- `k6_script.js`
-- `k6_output.json`
-- `k6_summary.json`
-- `metrics.json`
-- `rca.json`
-
-## Demo API
-
-Run the local demo API:
+Start the demo API:
 
 ```bash
 npm run demo-api
 ```
 
-The checkout endpoint simulates a bottleneck. To create the pass-case demo:
+## Demo Spec
+
+The local demo flow is designed around:
+
+- Target: `http://localhost:3001`
+- OpenAPI spec: `http://localhost:3001/openapi.json`
+- Flow: `POST /auth/login`, `GET /cart`, `POST /checkout`
+- Thresholds: p95 latency and error rate from the Notion spec
+
+To create a pass-case demo on the local API:
 
 ```bash
 curl -X POST http://localhost:3001/admin/pool/500
 ```
 
-## Presentation Notes
+## Express API
 
-1. Start with the Notion page, not the terminal.
-2. Say this is a production failure investigation tool, not a load-testing UI.
-3. Let the Notion verdict and metrics table do the talking.
-4. Show that changing one line in Notion changes the investigation outcome.
+### `POST /api/run`
 
-Closing line:
+Starts an investigation run.
 
-> The bottleneck was always there. Now you can find it before your users do.
+Request body:
+
+```json
+{
+  "notion_page_id": "string",
+  "notion_database_id": "string"
+}
+```
+
+Response:
+
+```json
+{
+  "run_id": "uuid",
+  "status": "PENDING",
+  "message": "Investigation started. Poll /api/run/{run_id}/status for updates."
+}
+```
+
+### `GET /api/run/:run_id/status`
+
+Returns the current in-memory status for a run, including phase and progress message.
+
+### `GET /api/run/:run_id/result`
+
+Returns the completed result payload:
+
+```json
+{
+  "run_id": "uuid",
+  "project_status": "RUN_SUCCEEDED | RUN_FAILED",
+  "api_verdict": "PASSED | FAILED | INCONCLUSIVE",
+  "verdict": "PASSED | FAILED | INCONCLUSIVE",
+  "metrics": {},
+  "diagnosis": {},
+  "notion_report_url": "https://www.notion.so/..."
+}
+```
+
+## Local Run Artifacts
+
+Each run creates a directory under `runs/{run_id}/` with:
+
+- `spec.json`
+- `k6_script.js`
+- `script-meta.json`
+- `k6_output.json`
+- `k6_summary.json`
+- `metrics.json`
+- `rca.json`
+
+These files are the local source of truth for what was parsed, executed, and diagnosed.
+
+## Investigation Flow
+
+At a high level:
+
+1. Notion page content is fetched through MCP.
+2. The spec is parsed into structured JSON.
+3. A run row is created in the Notion database.
+4. A k6 script is generated and validated.
+5. Docker runs the k6 script and exports summary output.
+6. Metrics are parsed from the summary file.
+7. A diagnosis is generated.
+8. The Notion database row is updated.
+9. A report sub-page is created under the run row.
+
+## Failure Handling
+
+The implementation includes fallbacks for the main failure modes:
+
+- Missing or invalid target URL
+  returns `SPEC_PARSE_FAILED`
+- Docker unavailable
+  returns a clean error and stops the run
+- Invalid generated k6 script
+  validation fails before execution
+- LLM JSON failure
+  retries once, then falls back to deterministic behavior
+- Partial metrics parsing issues
+  handled defensively in the metrics parser
+
+## Notes
+
+- Docker must be running locally.
+- Notion MCP must be authenticated in this environment.
+- The parent Notion page must be accessible to the authenticated MCP session.
+- Groq is the only active LLM provider in the current implementation.
+
+## Repository Files
+
+Key files:
+
+- [.env.example](/C:/Users/91730/Documents/Notion%20MCP/.env.example)
+- [README.md](/C:/Users/91730/Documents/Notion%20MCP/README.md)
+- [index.js](/C:/Users/91730/Documents/Notion%20MCP/index.js)
+- [src/notionClient.js](/C:/Users/91730/Documents/Notion%20MCP/src/notionClient.js)
+- [src/orchestrator.js](/C:/Users/91730/Documents/Notion%20MCP/src/orchestrator.js)
+- [src/llm.js](/C:/Users/91730/Documents/Notion%20MCP/src/llm.js)
+- [src/server.js](/C:/Users/91730/Documents/Notion%20MCP/src/server.js)
+
+## Example Outcome
+
+Typical interpretation:
+
+- `project_status: RUN_SUCCEEDED`
+- `api_verdict: FAILED`
+
+This means the application worked correctly and found that the target API breached the requested thresholds.
