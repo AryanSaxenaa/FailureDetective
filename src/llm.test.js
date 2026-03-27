@@ -40,3 +40,13 @@ test("rejects diagnosis text when it invents numbers not present in measured met
 
   assert.equal(isDiagnosisGroundedInMetrics(diagnosis, spec, metrics), false);
 });
+
+test("allows a qualitative headline when the numeric evidence is grounded elsewhere", () => {
+  const diagnosis = {
+    headline: "Service remained stable for users",
+    primary_finding: "Latency measured 315ms against a 300ms threshold. Peak RPS reached 430 across 116925 requests.",
+    confidence_reasoning: "Confidence is HIGH because failed requests were 19."
+  };
+
+  assert.equal(isDiagnosisGroundedInMetrics(diagnosis, spec, metrics), true);
+});

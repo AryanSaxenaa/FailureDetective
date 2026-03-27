@@ -10,6 +10,16 @@ function metricNumber(metric, key, fallback = 0) {
   return typeof value === "number" ? value : fallback;
 }
 
+function optionalMetricNumber(metric, keys) {
+  for (const key of keys) {
+    const value = metricNumber(metric, key, null);
+    if (typeof value === "number") {
+      return Math.round(value);
+    }
+  }
+  return null;
+}
+
 export function extractMetrics(summaryPath) {
   try {
     const summary = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
@@ -33,9 +43,9 @@ export function extractMetrics(summaryPath) {
     }, candidates[0] ?? 0);
 
     return {
-      p50_ms: Math.round(metricNumber(durations, "p(50)", metricNumber(durations, "med", 0))),
-      p95_ms: Math.round(metricNumber(durations, "p(95)", 0)),
-      p99_ms: Math.round(metricNumber(durations, "p(99)", metricNumber(durations, "max", 0))),
+      p50_ms: optionalMetricNumber(durations, ["p(50)", "med"]),
+      p95_ms: optionalMetricNumber(durations, ["p(95)", "max"]),
+      p99_ms: optionalMetricNumber(durations, ["p(99)", "max"]),
       error_rate: errorRate,
       peak_rps: Math.round(metricNumber(requests, "rate", 0)),
       peak_vus: Math.round(metricNumber(summary.metrics["vus_max"] || {}, "max", metricNumber(summary.metrics["vus_max"] || {}, "value", 0))),
@@ -44,9 +54,9 @@ export function extractMetrics(summaryPath) {
     };
   } catch {
     return {
-      p50_ms: 0,
-      p95_ms: 0,
-      p99_ms: 0,
+      p50_ms: null,
+      p95_ms: null,
+      p99_ms: null,
       error_rate: 0,
       peak_rps: 0,
       peak_vus: 0,

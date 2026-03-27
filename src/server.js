@@ -46,8 +46,7 @@ export function createServer() {
     return res.json({
       run_id: run.run_id,
       project_status: run.project_status,
-      api_verdict: run.api_verdict ?? run.verdict,
-      verdict: run.verdict,
+      api_verdict: run.api_verdict ?? null,
       metrics: run.metrics,
       diagnosis: run.diagnosis,
       notion_report_url: run.notion_report_url

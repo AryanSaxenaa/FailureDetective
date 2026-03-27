@@ -118,6 +118,10 @@ function truncateNotionText(value, limit = 1900) {
   return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
 }
 
+function metricText(value) {
+  return Number.isFinite(value) ? `${value}ms` : "N/A";
+}
+
 function notionTextToPlainText(text) {
   const match = text.match(/<content>\s*([\s\S]*?)\s*<\/content>/i);
   const content = match ? match[1] : text;
@@ -504,7 +508,7 @@ export async function writeDiagnosisToRow(mcp, rowId, spec, metrics, diagnosis) 
 export async function createReportSubPage(mcp, rowId, spec, metrics, diagnosis) {
   const content = `| Metric | Measured | Your Threshold | Status |
 | --- | --- | --- | --- |
-| P95 Latency | ${metrics.p95_ms}ms | ${spec.p95_threshold_ms}ms | ${metrics.p95_ms < spec.p95_threshold_ms ? "✅" : "❌"} |
+| P95 Latency | ${metricText(metrics.p95_ms)} | ${spec.p95_threshold_ms}ms | ${Number.isFinite(metrics.p95_ms) ? (metrics.p95_ms < spec.p95_threshold_ms ? "✅" : "❌") : "—"} |
 | Error Rate | ${(metrics.error_rate * 100).toFixed(1)}% | ${(spec.error_rate_threshold * 100).toFixed(1)}% | ${metrics.error_rate < spec.error_rate_threshold ? "✅" : "❌"} |
 | Peak RPS | ${metrics.peak_rps} | — | — |
 | Total Requests | ${metrics.total_requests} | — | — |
@@ -530,8 +534,8 @@ ${diagnosis.confidence} — ${diagnosis.confidence_reasoning}
 Endpoints (in order): ${spec.endpoints.join(", ") || "None specified"}
 
 Additional metrics:
-- p50 latency: ${metrics.p50_ms}ms
-- p99 latency: ${metrics.p99_ms}ms
+- p50 latency: ${metricText(metrics.p50_ms)}
+- p99 latency: ${metricText(metrics.p99_ms)}
 - Ramp period: ${spec.ramp_seconds}s to ${spec.max_vus} VUs
 - Sustain period: ${Math.max(spec.duration_seconds - spec.ramp_seconds, 0)}s`;
 

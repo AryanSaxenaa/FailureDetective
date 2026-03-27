@@ -51,6 +51,9 @@ ${openApiSchemas || "NONE"}`;
 }
 
 export function buildDiagnosisPrompt(spec, metrics) {
+  const p50 = Number.isFinite(metrics.p50_ms) ? `${metrics.p50_ms}ms` : "unavailable";
+  const p95 = Number.isFinite(metrics.p95_ms) ? `${metrics.p95_ms}ms` : "unavailable";
+  const p99 = Number.isFinite(metrics.p99_ms) ? `${metrics.p99_ms}ms` : "unavailable";
   return `You are a performance engineering analyst producing a failure diagnosis.
 
 LANGUAGE RULES — enforce strictly:
@@ -70,9 +73,9 @@ Parameters:
 - Error rate threshold: ${(spec.error_rate_threshold * 100).toFixed(1)}%
 
 Measured results:
-- p50 latency: ${metrics.p50_ms}ms
-- p95 latency: ${metrics.p95_ms}ms
-- p99 latency: ${metrics.p99_ms}ms
+- p50 latency: ${p50}
+- p95 latency: ${p95}
+- p99 latency: ${p99}
 - Error rate: ${(metrics.error_rate * 100).toFixed(1)}%
 - Peak RPS: ${metrics.peak_rps}
 - Total requests: ${metrics.total_requests}

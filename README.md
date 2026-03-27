@@ -234,7 +234,6 @@ Returns the completed result payload:
   "run_id": "uuid",
   "project_status": "RUN_SUCCEEDED | RUN_FAILED",
   "api_verdict": "PASSED | FAILED | INCONCLUSIVE",
-  "verdict": "PASSED | FAILED | INCONCLUSIVE",
   "metrics": {},
   "diagnosis": {},
   "notion_report_url": "https://www.notion.so/..."

@@ -41,6 +41,14 @@ function dockerReachableTargetUrl(targetUrl) {
     .replace("://127.0.0.1", "://host.docker.internal");
 }
 
+function latencyText(value) {
+  return Number.isFinite(value) ? `${value}ms` : "unavailable";
+}
+
+function errorRatePercentText(value) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 function extractFirstUrl(text) {
   if (!text) {
     return null;
@@ -431,26 +439,64 @@ export function extractNumericTokens(text) {
     .filter(Boolean);
 }
 
-export function isDiagnosisGroundedInMetrics(diagnosis, spec, metrics) {
-  const fields = [
-    diagnosis?.headline,
-    diagnosis?.primary_finding,
-    diagnosis?.confidence_reasoning
-  ];
-  const allowed = diagnosisAllowedNumbers(spec, metrics);
-  const fieldTokens = fields.map((field) => extractNumericTokens(field));
+function fieldHasOnlyAllowedNumbers(text, allowed) {
+  const tokens = extractNumericTokens(text);
+  return tokens.every((token) => allowed.has(token));
+}
 
-  if (fieldTokens.some((tokens) => tokens.length === 0)) {
-    return false;
+function fieldHasRequiredNumbers(text) {
+  return extractNumericTokens(text).length > 0;
+}
+
+export function isDiagnosisGroundedInMetrics(diagnosis, spec, metrics) {
+  const allowed = diagnosisAllowedNumbers(spec, metrics);
+  return (
+    fieldHasRequiredNumbers(diagnosis?.primary_finding) &&
+    fieldHasRequiredNumbers(diagnosis?.confidence_reasoning) &&
+    fieldHasOnlyAllowedNumbers(diagnosis?.headline, allowed) &&
+    fieldHasOnlyAllowedNumbers(diagnosis?.primary_finding, allowed) &&
+    fieldHasOnlyAllowedNumbers(diagnosis?.confidence_reasoning, allowed)
+  );
+}
+
+function reconcileDiagnosis(diagnosis, fallback, spec, metrics) {
+  if (diagnosis?.verdict !== fallback.verdict) {
+    return fallback;
   }
 
-  return fieldTokens.every((tokens) => tokens.every((token) => allowed.has(token)));
+  const allowed = diagnosisAllowedNumbers(spec, metrics);
+  const headline = fieldHasOnlyAllowedNumbers(diagnosis?.headline, allowed) && typeof diagnosis?.headline === "string" && diagnosis.headline.trim()
+    ? diagnosis.headline
+    : fallback.headline;
+  const primaryFinding = fieldHasRequiredNumbers(diagnosis?.primary_finding) && fieldHasOnlyAllowedNumbers(diagnosis?.primary_finding, allowed)
+    ? diagnosis.primary_finding
+    : fallback.primary_finding;
+  const confidenceReasoning = fieldHasRequiredNumbers(diagnosis?.confidence_reasoning) && fieldHasOnlyAllowedNumbers(diagnosis?.confidence_reasoning, allowed)
+    ? diagnosis.confidence_reasoning
+    : fallback.confidence_reasoning;
+
+  return {
+    verdict: fallback.verdict,
+    verdict_emoji: fallback.verdict_emoji,
+    headline,
+    primary_finding: primaryFinding,
+    fix_recommendation: typeof diagnosis?.fix_recommendation === "string" && diagnosis.fix_recommendation.trim()
+      ? diagnosis.fix_recommendation
+      : fallback.fix_recommendation,
+    confidence: ["HIGH", "MEDIUM", "LOW"].includes(diagnosis?.confidence)
+      ? diagnosis.confidence
+      : fallback.confidence,
+    confidence_reasoning: confidenceReasoning
+  };
 }
 
 export function buildDiagnosisFallback(spec, metrics, runId) {
   const verdict = deterministicVerdict(spec, metrics);
   const verdictEmoji = verdict === VERDICTS.FAILED ? "❌ FAILED" : verdict === VERDICTS.PASSED ? "✅ PASSED" : "⚠️ INCONCLUSIVE";
   const thresholdLabel = metrics.error_rate >= spec.error_rate_threshold ? "error threshold" : "latency threshold";
+  const latencySummary = Number.isFinite(metrics.p95_ms)
+    ? `P95 latency measured ${metrics.p95_ms}ms against a ${spec.p95_threshold_ms}ms threshold.`
+    : "Latency metrics were unavailable from the k6 summary.";
   const headline =
     verdict === VERDICTS.INCONCLUSIVE
       ? "Investigation complete — manual review required to determine root cause"
@@ -461,7 +507,7 @@ export function buildDiagnosisFallback(spec, metrics, runId) {
     verdict,
     verdict_emoji: verdictEmoji,
     headline,
-    primary_finding: `P95 latency measured ${metrics.p95_ms}ms against a ${spec.p95_threshold_ms}ms threshold. Error rate was ${(metrics.error_rate * 100).toFixed(1)}% against a ${(spec.error_rate_threshold * 100).toFixed(1)}% threshold. Automated narrative unavailable — review raw metrics in the run directory.`,
+    primary_finding: `${latencySummary} Error rate was ${errorRatePercentText(metrics.error_rate)} against a ${errorRatePercentText(spec.error_rate_threshold)} threshold. Automated narrative unavailable — review raw metrics in the run directory.`,
     fix_recommendation: `Review /runs/${runId}/metrics.json for full data. Compare p95 latency curve against VU ramp to identify the failure point.`,
     confidence: "LOW",
     confidence_reasoning: "Automated diagnosis unavailable — metrics are real but narrative generation failed. Raw data is accurate."
@@ -471,7 +517,5 @@ export function buildDiagnosisFallback(spec, metrics, runId) {
 export async function generateDiagnosis(spec, metrics, runId) {
   const fallback = buildDiagnosisFallback(spec, metrics, runId);
   const diagnosis = await callLLM(buildDiagnosisPrompt(spec, metrics), fallback);
-  return diagnosis?.verdict === deterministicVerdict(spec, metrics) && isDiagnosisGroundedInMetrics(diagnosis, spec, metrics)
-    ? diagnosis
-    : fallback;
+  return reconcileDiagnosis(diagnosis, fallback, spec, metrics);
 }

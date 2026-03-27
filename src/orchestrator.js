@@ -15,6 +15,10 @@ import { buildDiagnosisFallback, extractSpec, generateDiagnosis, generateK6Scrip
 import { ensureRunDir, writeJson } from "./paths.js";
 import { getRunState, setRunState } from "./state.js";
 
+function metricSummary(value) {
+  return Number.isFinite(value) ? `${value}ms` : "N/A";
+}
+
 export async function runInvestigation({ notion, notionPageId, notionDatabaseId, runId = uuidv4() }) {
   const runDir = ensureRunDir(runId);
   const startedAt = Date.now();
@@ -72,7 +76,7 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
 
     setRunState(runId, {
       phase: RUN_PHASES.DIAGNOSING,
-      progress_message: `Diagnosing ${metrics.total_requests} requests with p95 ${metrics.p95_ms}ms`,
+      progress_message: `Diagnosing ${metrics.total_requests} requests with p95 ${metricSummary(metrics.p95_ms)}`,
       elapsed_seconds: Math.round((Date.now() - startedAt) / 1000)
     });
 
@@ -98,7 +102,6 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
       elapsed_seconds: Math.round((Date.now() - startedAt) / 1000),
       project_status: projectStatus,
       api_verdict: apiVerdict,
-      verdict: diagnosis.verdict,
       metrics,
       diagnosis,
       notion_report_url: report.url
@@ -108,11 +111,10 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
       run_id: runId,
       project_status: projectStatus,
       api_verdict: apiVerdict,
-      verdict: diagnosis.verdict,
       metrics,
       diagnosis,
       notion_report_url: report.url,
-      summary: `Run succeeded. API verdict ${apiVerdict}. P95 ${metrics.p95_ms}ms vs ${spec.p95_threshold_ms}ms, error rate ${percent(metrics.error_rate)}`
+      summary: `Run succeeded. API verdict ${apiVerdict}. P95 ${metricSummary(metrics.p95_ms)} vs ${spec.p95_threshold_ms}ms, error rate ${percent(metrics.error_rate)}`
     };
   } catch (error) {
     if (row?.id) {
