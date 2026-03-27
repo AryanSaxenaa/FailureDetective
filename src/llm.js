@@ -459,33 +459,43 @@ export function isDiagnosisGroundedInMetrics(diagnosis, spec, metrics) {
   );
 }
 
-function reconcileDiagnosis(diagnosis, fallback, spec, metrics) {
+export function reconcileDiagnosis(diagnosis, fallback, spec, metrics) {
   if (diagnosis?.verdict !== fallback.verdict) {
     return fallback;
   }
 
   const allowed = diagnosisAllowedNumbers(spec, metrics);
-  const headline = fieldHasOnlyAllowedNumbers(diagnosis?.headline, allowed) && typeof diagnosis?.headline === "string" && diagnosis.headline.trim()
+  const headlineIsGrounded = fieldHasOnlyAllowedNumbers(diagnosis?.headline, allowed) && typeof diagnosis?.headline === "string" && diagnosis.headline.trim();
+  const primaryFindingIsGrounded = fieldHasRequiredNumbers(diagnosis?.primary_finding) && fieldHasOnlyAllowedNumbers(diagnosis?.primary_finding, allowed);
+  const confidenceReasoningIsGrounded = fieldHasRequiredNumbers(diagnosis?.confidence_reasoning) && fieldHasOnlyAllowedNumbers(diagnosis?.confidence_reasoning, allowed);
+  const narrativeIsGrounded = primaryFindingIsGrounded && confidenceReasoningIsGrounded;
+
+  const headline = headlineIsGrounded
     ? diagnosis.headline
     : fallback.headline;
-  const primaryFinding = fieldHasRequiredNumbers(diagnosis?.primary_finding) && fieldHasOnlyAllowedNumbers(diagnosis?.primary_finding, allowed)
+  const primaryFinding = primaryFindingIsGrounded
     ? diagnosis.primary_finding
     : fallback.primary_finding;
-  const confidenceReasoning = fieldHasRequiredNumbers(diagnosis?.confidence_reasoning) && fieldHasOnlyAllowedNumbers(diagnosis?.confidence_reasoning, allowed)
+  const confidenceReasoning = confidenceReasoningIsGrounded
     ? diagnosis.confidence_reasoning
     : fallback.confidence_reasoning;
+  const fixRecommendation = narrativeIsGrounded &&
+    typeof diagnosis?.fix_recommendation === "string" &&
+    diagnosis.fix_recommendation.trim() &&
+    fieldHasOnlyAllowedNumbers(diagnosis.fix_recommendation, allowed)
+      ? diagnosis.fix_recommendation
+      : fallback.fix_recommendation;
+  const confidence = narrativeIsGrounded && ["HIGH", "MEDIUM", "LOW"].includes(diagnosis?.confidence)
+    ? diagnosis.confidence
+    : fallback.confidence;
 
   return {
     verdict: fallback.verdict,
     verdict_emoji: fallback.verdict_emoji,
     headline,
     primary_finding: primaryFinding,
-    fix_recommendation: typeof diagnosis?.fix_recommendation === "string" && diagnosis.fix_recommendation.trim()
-      ? diagnosis.fix_recommendation
-      : fallback.fix_recommendation,
-    confidence: ["HIGH", "MEDIUM", "LOW"].includes(diagnosis?.confidence)
-      ? diagnosis.confidence
-      : fallback.confidence,
+    fix_recommendation: fixRecommendation,
+    confidence,
     confidence_reasoning: confidenceReasoning
   };
 }

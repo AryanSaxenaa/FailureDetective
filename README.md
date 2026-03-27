@@ -4,6 +4,37 @@ Notion Failure Detective is a Node.js application that reads an investigation sp
 
 The product focus is production failure investigation, not a standalone load-testing dashboard. Notion is the primary interface for defining what to investigate and for reading the final report.
 
+## Why This Is Different
+
+Most tools stop at running traffic. This one closes the loop inside Notion:
+
+- write the investigation in plain English in a Notion page
+- run the investigation
+- read the structured diagnosis back in Notion
+
+That makes Notion MCP load-bearing, not decorative.
+
+## Hero Demo
+
+Primary showcase: the local bottleneck demo.
+
+Main local demo story:
+
+- you write the API investigation in Notion
+- the system reads it through MCP
+- it runs the checkout flow under load
+- it writes back the result, root cause, and next action in Notion
+
+Hero example from the local bottleneck scenario:
+
+![Notion report snapshot](assets/notion-report-hero.png)
+
+This is the strongest product moment in the project:
+
+- plain-English spec in Notion
+- one run
+- a structured investigation report back in Notion
+
 ## Overview
 
 The system supports this end-to-end workflow:
@@ -148,6 +179,8 @@ curl -X POST http://localhost:3001/admin/pool/500
 
 ## Using A Public Target
 
+Quick verification path for reviewers: use a very small public scenario.
+
 If you want to demonstrate the workflow against a public target, use a very small scenario only. Shared public test services are appropriate for lightweight demos, not sustained or aggressive load.
 
 Example public target:
@@ -178,17 +211,23 @@ Recommended steps:
 5. Open the generated Notion report URL from the CLI output.
 6. Restore your original local spec when you are done.
 
+Why this section exists:
+
+- the local demo remains the primary showcase
+- the public target is the fastest way for a reviewer to verify the workflow
+- it avoids requiring the reviewer to boot the local demo API first
+
 Verified example result from this project:
 
 - target: `https://test-api.k6.io`
-- run id: `b4135e50-7f6d-4fce-974a-8c00d47ea6fa`
+- run id: `673f55a9-b175-4612-bd28-4d554ae47f37`
 - project status: `RUN_SUCCEEDED`
 - api verdict: `PASSED`
-- p95 latency: `522ms`
+- p95 latency: `680ms`
 - error rate: `0.0%`
 - peak VUs: `5`
-- total requests: `352`
-- report: [Notion report](https://www.notion.so/3301f496f67d81e8b01ed75fe1a8d32a)
+- total requests: `220`
+- report: [Notion report](https://www.notion.so/3301f496f67d81d394b0d6d26824be36)
 
 Notes:
 

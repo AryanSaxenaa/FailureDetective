@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isDiagnosisGroundedInMetrics } from "./llm.js";
+import { buildDiagnosisFallback, isDiagnosisGroundedInMetrics, reconcileDiagnosis } from "./llm.js";
 
 const spec = {
   max_vus: 200,
@@ -49,4 +49,38 @@ test("allows a qualitative headline when the numeric evidence is grounded elsewh
   };
 
   assert.equal(isDiagnosisGroundedInMetrics(diagnosis, spec, metrics), true);
+});
+
+test("reconcileDiagnosis falls back confidence and fix when factual reasoning is not grounded", () => {
+  const fallback = buildDiagnosisFallback(spec, metrics, "run-1");
+  const diagnosis = {
+    verdict: fallback.verdict,
+    headline: "Service remained stable for users",
+    primary_finding: "Latency measured 315ms against a 300ms threshold. Peak RPS reached 430 across 116925 requests.",
+    fix_recommendation: "Increase concurrency to 600 workers immediately.",
+    confidence: "HIGH",
+    confidence_reasoning: "Confidence is HIGH because 7.0% errors were observed."
+  };
+
+  const reconciled = reconcileDiagnosis(diagnosis, fallback, spec, metrics);
+  assert.equal(reconciled.fix_recommendation, fallback.fix_recommendation);
+  assert.equal(reconciled.confidence, fallback.confidence);
+  assert.equal(reconciled.confidence_reasoning, fallback.confidence_reasoning);
+});
+
+test("reconcileDiagnosis keeps grounded model fix and confidence when the narrative is grounded", () => {
+  const fallback = buildDiagnosisFallback(spec, metrics, "run-1");
+  const diagnosis = {
+    verdict: fallback.verdict,
+    headline: "Service remained stable for users",
+    primary_finding: "Latency measured 315ms against a 300ms threshold. Peak RPS reached 430 across 116925 requests.",
+    fix_recommendation: "Add request tracing around the 315ms latency path and verify behavior at 430 peak RPS.",
+    confidence: "HIGH",
+    confidence_reasoning: "Confidence is HIGH because failed requests were 19."
+  };
+
+  const reconciled = reconcileDiagnosis(diagnosis, fallback, spec, metrics);
+  assert.equal(reconciled.fix_recommendation, diagnosis.fix_recommendation);
+  assert.equal(reconciled.confidence, "HIGH");
+  assert.equal(reconciled.confidence_reasoning, diagnosis.confidence_reasoning);
 });

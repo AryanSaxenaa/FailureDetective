@@ -97,7 +97,7 @@ function parseEmbeddedJsonStrings(text) {
   return parsed;
 }
 
-function extractFetchBodyText(raw) {
+export function extractFetchBodyText(raw) {
   const jsonObjects = parseEmbeddedJsonStrings(raw);
   for (const parsed of jsonObjects) {
     if (typeof parsed?.text === "string") {
@@ -122,7 +122,7 @@ function metricText(value) {
   return Number.isFinite(value) ? `${value}ms` : "N/A";
 }
 
-function notionTextToPlainText(text) {
+export function notionTextToPlainText(text) {
   const match = text.match(/<content>\s*([\s\S]*?)\s*<\/content>/i);
   const content = match ? match[1] : text;
   return content
@@ -134,7 +134,7 @@ function notionTextToPlainText(text) {
     .trim();
 }
 
-function extractDatabaseInfo(value, title = REPORT_DATABASE_TITLE) {
+export function extractDatabaseInfo(value, title = REPORT_DATABASE_TITLE) {
   const strings = findStringsDeep(value);
   const jsonObjects = parseEmbeddedJsonStrings(value);
 
@@ -186,7 +186,7 @@ function extractDatabaseInfo(value, title = REPORT_DATABASE_TITLE) {
   };
 }
 
-function extractPageInfo(value, title) {
+export function extractPageInfo(value, title) {
   const strings = findStringsDeep(value);
   const jsonObjects = parseEmbeddedJsonStrings(value);
 
