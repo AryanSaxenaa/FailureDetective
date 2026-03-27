@@ -146,6 +146,56 @@ To create a pass-case demo on the local API:
 curl -X POST http://localhost:3001/admin/pool/500
 ```
 
+## Using A Public Target
+
+If you want to demonstrate the workflow against a public target, use a very small scenario only. Shared public test services are appropriate for lightweight demos, not sustained or aggressive load.
+
+Example public target:
+
+- Base URL: `https://test-api.k6.io`
+- Example endpoints:
+  - `GET /public/crocodiles/`
+  - `GET /public/crocodiles/1/`
+
+Example Notion spec:
+
+```text
+Target: https://test-api.k6.io
+
+What I want to investigate:
+Ramp to 5 concurrent users over 10 seconds.
+Sustain for 20 seconds.
+Investigate the public crocodiles endpoints: GET /public/crocodiles/, GET /public/crocodiles/1/.
+Flag if p95 latency exceeds 1500ms or error rate exceeds 5%.
+```
+
+Recommended steps:
+
+1. Make sure Docker Desktop is running locally.
+2. Open the Notion `Test Spec` page.
+3. Replace the page content with the public-target spec above.
+4. Run `node index.js run`.
+5. Open the generated Notion report URL from the CLI output.
+6. Restore your original local spec when you are done.
+
+Verified example result from this project:
+
+- target: `https://test-api.k6.io`
+- run id: `b4135e50-7f6d-4fce-974a-8c00d47ea6fa`
+- project status: `RUN_SUCCEEDED`
+- api verdict: `PASSED`
+- p95 latency: `522ms`
+- error rate: `0.0%`
+- peak VUs: `5`
+- total requests: `352`
+- report: [Notion report](https://www.notion.so/3301f496f67d81e8b01ed75fe1a8d32a)
+
+Notes:
+
+- Keep the public-target load intentionally small.
+- Do not use shared public targets for stress or endurance testing.
+- The local demo API remains the preferred target for repeatable full demos.
+
 ## Express API
 
 ### `POST /api/run`
