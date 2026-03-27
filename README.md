@@ -115,7 +115,18 @@ Install dependencies:
 
 ```bash
 npm install
+```
+
+Create `.env` from the example file:
+
+```bash
 cp .env.example .env
+```
+
+On PowerShell, use:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
 Fill in these values in `.env`:
@@ -144,22 +155,63 @@ node index.js init
 
 ## Running The Project
 
-Run a full investigation from the configured Notion page:
+There are three different runtime modes in this project:
+
+- `npm run demo-api`
+  Starts the demo target API on `http://localhost:3001`. You only need this for the local bottleneck demo.
+- `node index.js run`
+  Runs one investigation from the configured Notion spec page and writes the result back to Notion.
+- `node index.js server`
+  Starts the optional Express API wrapper for programmatic runs. This is not required for the normal CLI demo flow.
+
+### Local Demo: Primary Showcase
+
+Use this when you want to demonstrate the full local bottleneck story.
+
+Requirements:
+
+- Docker Desktop running
+- Notion MCP already authenticated
+- `node index.js init` already completed
+- a separate terminal for the demo API
+
+Step by step:
+
+1. Make sure the Notion `Test Spec` page still points to the local demo target described in `Demo Spec` below.
+2. Start the demo API:
+
+```bash
+npm run demo-api
+```
+
+3. In another terminal, run the investigation:
 
 ```bash
 node index.js run
 ```
 
-Start the local API server:
+What happens in this flow:
+
+1. `npm run demo-api` starts the target API on `http://localhost:3001`.
+2. `node index.js run` reads the Notion `Test Spec` page through MCP.
+3. The investigation runs in Dockerized k6 against the demo API.
+4. The result and diagnosis are written back to Notion.
+
+Important:
+
+- Do not start `node index.js server` on port `3001` at the same time as `npm run demo-api`.
+- `node index.js server` is a different service and also defaults to port `3001`.
+- If you want the optional Express API running while using the demo API, start it on a different port:
 
 ```bash
-node index.js server
+PORT=3010 node index.js server
 ```
 
-Start the demo API:
+On PowerShell, use:
 
-```bash
-npm run demo-api
+```powershell
+$env:PORT=3010
+node index.js server
 ```
 
 ## Demo Spec
@@ -205,11 +257,12 @@ Flag if p95 latency exceeds 1500ms or error rate exceeds 5%.
 Recommended steps:
 
 1. Make sure Docker Desktop is running locally.
-2. Open the Notion `Test Spec` page.
-3. Replace the page content with the public-target spec above.
-4. Run `node index.js run`.
-5. Open the generated Notion report URL from the CLI output.
-6. Restore your original local spec when you are done.
+2. Do not start `npm run demo-api` for this path. The target is public, so no local target API is required.
+3. Open the Notion `Test Spec` page.
+4. Replace the page content with the public-target spec above.
+5. Run `node index.js run`.
+6. Open the generated Notion report URL from the CLI output.
+7. Restore your original local spec when you are done.
 
 Why this section exists:
 
@@ -235,7 +288,38 @@ Notes:
 - Do not use shared public targets for stress or endurance testing.
 - The local demo API remains the preferred target for repeatable full demos.
 
+## Quick Start By Use Case
+
+### If you want the strongest demo
+
+Use the local bottleneck scenario.
+
+```bash
+npm install
+node index.js notion-login
+node index.js init
+npm run demo-api
+node index.js run
+```
+
+Before `node index.js run`, make sure the Notion `Test Spec` page still points to `http://localhost:3001`.
+
+### If you want the easiest reviewer verification
+
+Use the small public target scenario.
+
+```bash
+npm install
+node index.js notion-login
+node index.js init
+node index.js run
+```
+
+Before the public run, update the Notion `Test Spec` page to the `https://test-api.k6.io` example shown above.
+
 ## Express API
+
+This mode is optional. Most users do not need it for the hackathon demo.
 
 ### `POST /api/run`
 
