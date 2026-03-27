@@ -18,14 +18,27 @@ function runDocker(args) {
   });
 }
 
+export function isDockerUnavailableMessage(text = "") {
+  return /docker daemon|dockerdesktoplinuxengine|error during connect|cannot find the file specified|is the docker daemon running|open \/\/\.\/pipe\/dockerDesktopLinuxEngine/i.test(text);
+}
+
 export async function validateK6Script(scriptPath) {
   try {
     const runDir = path.dirname(scriptPath);
     const args = ["run", "--rm", "-v", `${runDir}:/scripts`, "grafana/k6:latest", "inspect", "/scripts/k6_script.js"];
     const result = await runDocker(args);
-    return { ok: result.code === 0, stderr: result.stderr || result.stdout };
+    const stderr = result.stderr || result.stdout;
+    return {
+      ok: result.code === 0,
+      stderr,
+      dockerUnavailable: isDockerUnavailableMessage(stderr)
+    };
   } catch (error) {
-    return { ok: false, stderr: error.message };
+    return {
+      ok: false,
+      stderr: error.message,
+      dockerUnavailable: isDockerUnavailableMessage(error.message)
+    };
   }
 }
 
@@ -54,12 +67,13 @@ export async function executeK6(runDir) {
   try {
     const startedAt = Date.now();
     const result = await runDocker(args);
+    const dockerUnavailable = isDockerUnavailableMessage(result.stderr || result.stdout);
     return {
-      ok: result.code === 0 || isThresholdFailure(result.stderr),
+      ok: !dockerUnavailable && (result.code === 0 || isThresholdFailure(result.stderr)),
       exitCode: result.code,
       durationMs: Date.now() - startedAt,
-      thresholdFailure: result.code !== 0 && isThresholdFailure(result.stderr),
-      dockerUnavailable: false,
+      thresholdFailure: !dockerUnavailable && result.code !== 0 && isThresholdFailure(result.stderr),
+      dockerUnavailable,
       stderr: result.stderr,
       stdout: result.stdout
     };
@@ -69,7 +83,7 @@ export async function executeK6(runDir) {
       exitCode: -1,
       durationMs: 0,
       thresholdFailure: false,
-      dockerUnavailable: /ENOENT|not recognized|cannot find/i.test(error.message),
+      dockerUnavailable: isDockerUnavailableMessage(error.message) || /ENOENT|not recognized|cannot find/i.test(error.message),
       stderr: error.message,
       stdout: ""
     };

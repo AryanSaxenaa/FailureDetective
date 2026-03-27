@@ -1,7 +1,7 @@
 import path from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import { RUN_PHASES, RUN_STATUS } from "./constants.js";
-import { percent } from "./format.js";
+import { percent, truncateText } from "./format.js";
 import { executeK6, validateK6Script } from "./k6Runner.js";
 import { extractMetrics } from "./metricsParser.js";
 import {
@@ -18,6 +18,7 @@ import { getRunState, setRunState } from "./state.js";
 export async function runInvestigation({ notion, notionPageId, notionDatabaseId, runId = uuidv4() }) {
   const runDir = ensureRunDir(runId);
   const startedAt = Date.now();
+  let row = null;
 
   setRunState(runId, {
     run_id: runId,
@@ -32,7 +33,7 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
     const spec = await extractSpec(rawSpec);
     writeJson(path.join(runDir, "spec.json"), spec);
 
-    const row = await createInvestigationRow(notion, notionDatabaseId, runId, spec);
+    row = await createInvestigationRow(notion, notionDatabaseId, runId, spec);
     setRunState(runId, { notion_row_id: row.id, status: RUN_STATUS.RUNNING });
     await updateRunStatus(notion, row.id, RUN_STATUS.RUNNING);
 
@@ -52,9 +53,6 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
     const k6Result = await executeK6(runDir);
     if (k6Result.dockerUnavailable) {
       const message = "Docker daemon not running. Start Docker Desktop and retry.";
-      await updateRunStatus(notion, row.id, RUN_STATUS.ERROR, {
-        Headline: { rich_text: [{ type: "text", text: { content: message } }] }
-      });
       const error = new Error(message);
       error.code = "DOCKER_UNAVAILABLE";
       throw error;
@@ -62,9 +60,6 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
 
     if (!k6Result.ok) {
       const stderr = (k6Result.stderr || "").slice(0, 500);
-      await updateRunStatus(notion, row.id, RUN_STATUS.ERROR, {
-        Headline: { rich_text: [{ type: "text", text: { content: `k6 script error: ${stderr}` } }] }
-      });
       const error = new Error(stderr);
       error.code = "K6_SCRIPT_ERROR";
       throw error;
@@ -120,6 +115,19 @@ export async function runInvestigation({ notion, notionPageId, notionDatabaseId,
       summary: `Run succeeded. API verdict ${apiVerdict}. P95 ${metrics.p95_ms}ms vs ${spec.p95_threshold_ms}ms, error rate ${percent(metrics.error_rate)}`
     };
   } catch (error) {
+    if (row?.id) {
+      const summary =
+        error.code === "DOCKER_UNAVAILABLE"
+          ? "Docker daemon not running. Start Docker Desktop and retry."
+          : error.code === "K6_SCRIPT_ERROR"
+            ? `k6 script error: ${truncateText(error.message, 500)}`
+            : error.code === "SCRIPT_GENERATION_FAILED"
+              ? `k6 script validation failed: ${truncateText(error.message, 500)}`
+              : "";
+      if (summary) {
+        await updateRunStatus(notion, row.id, RUN_STATUS.ERROR, summary).catch(() => {});
+      }
+    }
     setRunState(runId, {
       status: RUN_STATUS.ERROR,
       phase: RUN_PHASES.COMPLETE,

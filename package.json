@@ -10,7 +10,8 @@
     "init": "node index.js init",
     "run": "node index.js run",
     "notion-login": "node index.js notion-login",
-    "demo-api": "node src/demoApi.js"
+    "demo-api": "node src/demoApi.js",
+    "test": "node --test --experimental-test-isolation=none"
   },
   "engines": {
     "node": ">=20"

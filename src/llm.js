@@ -349,6 +349,11 @@ export async function generateK6Script(spec, runDir, validateScript) {
   const scriptPath = path.join(runDir, "k6_script.js");
   fs.writeFileSync(scriptPath, candidate, "utf8");
   let validation = await validateScript(scriptPath);
+  if (validation.dockerUnavailable) {
+    const error = new Error("Docker daemon not running. Start Docker Desktop and retry.");
+    error.code = "DOCKER_UNAVAILABLE";
+    throw error;
+  }
   if (validation.ok) {
     return candidate;
   }
@@ -359,6 +364,11 @@ export async function generateK6Script(spec, runDir, validateScript) {
   candidate = sanitizeGeneratedCode(await callRawCodeLLM(prompt).catch(() => fallbackK6Script(executionSpec)));
   fs.writeFileSync(scriptPath, candidate, "utf8");
   validation = await validateScript(scriptPath);
+  if (validation.dockerUnavailable) {
+    const error = new Error("Docker daemon not running. Start Docker Desktop and retry.");
+    error.code = "DOCKER_UNAVAILABLE";
+    throw error;
+  }
   if (!validation.ok) {
     const error = new Error(`SCRIPT_GENERATION_FAILED: ${validation.stderr}`);
     error.code = "SCRIPT_GENERATION_FAILED";
@@ -375,6 +385,66 @@ function deterministicVerdict(spec, metrics) {
     return VERDICTS.FAILED;
   }
   return VERDICTS.PASSED;
+}
+
+function canonicalNumberToken(value) {
+  const normalized = String(value).replace(/,/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed.toString() : null;
+}
+
+export function diagnosisAllowedNumbers(spec, metrics) {
+  const values = [
+    spec.max_vus,
+    spec.duration_seconds,
+    spec.ramp_seconds,
+    spec.p95_threshold_ms,
+    spec.error_rate_threshold,
+    spec.error_rate_threshold * 100,
+    metrics.p50_ms,
+    metrics.p95_ms,
+    metrics.p99_ms,
+    metrics.error_rate,
+    metrics.error_rate * 100,
+    metrics.peak_rps,
+    metrics.peak_vus,
+    metrics.total_requests,
+    metrics.failed_requests
+  ];
+  const allowed = new Set();
+
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    allowed.add(Number(value).toString());
+    allowed.add(Number(value).toFixed(1).replace(/\.0$/, ""));
+    allowed.add(Number(value).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1"));
+  }
+
+  return allowed;
+}
+
+export function extractNumericTokens(text) {
+  return [...String(text || "").matchAll(/\d[\d,]*(?:\.\d+)?/g)]
+    .map((match) => canonicalNumberToken(match[0]))
+    .filter(Boolean);
+}
+
+export function isDiagnosisGroundedInMetrics(diagnosis, spec, metrics) {
+  const fields = [
+    diagnosis?.headline,
+    diagnosis?.primary_finding,
+    diagnosis?.confidence_reasoning
+  ];
+  const allowed = diagnosisAllowedNumbers(spec, metrics);
+  const fieldTokens = fields.map((field) => extractNumericTokens(field));
+
+  if (fieldTokens.some((tokens) => tokens.length === 0)) {
+    return false;
+  }
+
+  return fieldTokens.every((tokens) => tokens.every((token) => allowed.has(token)));
 }
 
 export function buildDiagnosisFallback(spec, metrics, runId) {
@@ -401,5 +471,7 @@ export function buildDiagnosisFallback(spec, metrics, runId) {
 export async function generateDiagnosis(spec, metrics, runId) {
   const fallback = buildDiagnosisFallback(spec, metrics, runId);
   const diagnosis = await callLLM(buildDiagnosisPrompt(spec, metrics), fallback);
-  return diagnosis?.verdict === deterministicVerdict(spec, metrics) ? diagnosis : fallback;
+  return diagnosis?.verdict === deterministicVerdict(spec, metrics) && isDiagnosisGroundedInMetrics(diagnosis, spec, metrics)
+    ? diagnosis
+    : fallback;
 }

@@ -107,6 +107,17 @@ function extractFetchBodyText(raw) {
   return raw;
 }
 
+export function normalizeStatusSummary(extraSummary) {
+  if (!extraSummary) {
+    return "";
+  }
+  return typeof extraSummary === "string" ? extraSummary : stringifyContent(extraSummary);
+}
+
+function truncateNotionText(value, limit = 1900) {
+  return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
+}
+
 function notionTextToPlainText(text) {
   const match = text.match(/<content>\s*([\s\S]*?)\s*<\/content>/i);
   const content = match ? match[1] : text;
@@ -445,21 +456,23 @@ export async function createInvestigationRow(mcp, databaseId, runId, spec) {
 }
 
 export async function updateRunStatus(mcp, rowId, status, extraSummary = "") {
+  const summaryText = truncateNotionText(normalizeStatusSummary(extraSummary));
   await updatePage(mcp, {
     page_id: rowId,
     command: "update_properties",
     properties: {
-      Status: status
+      Status: status,
+      ...(summaryText ? { Headline: summaryText } : {})
     },
     content_updates: []
   });
 
-  if (extraSummary) {
+  if (summaryText) {
     const fetched = await fetchWorkspace(mcp, rowId);
     await updatePage(mcp, {
       page_id: rowId,
       command: "replace_content",
-      new_str: `${fetched.text}\n\n${extraSummary}`.trim(),
+      new_str: `${notionTextToPlainText(extractFetchBodyText(fetched.text))}\n\n${summaryText}`.trim(),
       content_updates: [],
       allow_deleting_content: true
     });
